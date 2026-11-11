@@ -39,6 +39,7 @@ episodes_col = db["episodes"]
 states_col = db["states"]
 get_files_col = db["get_files_tokens"]
 poster_sessions_col = db["poster_sessions"]
+users_col = db["users"]
 
 
 # ================= BOT =================
@@ -191,6 +192,21 @@ async def update_state(user_id, data):
 @app.on_message(filters.private & filters.command("start"))
 async def start_command(client, message):
 
+    now = datetime.now(timezone.utc)
+
+    await users_col.update_one(
+        {"user_id": message.from_user.id},
+        {
+            "$set": {
+                "last_start": now
+            },
+            "$setOnInsert": {
+                "first_start": now
+            }
+        },
+        upsert=True
+    )
+
     if len(message.command) > 1:
         token = message.command[1]
 
@@ -268,6 +284,38 @@ async def start_command(client, message):
         return
 
     await send_welcome(client, message)
+
+# ================= BOT STATISTICS =================
+
+@app.on_message(
+    filters.private
+    & filters.user(ADMIN_IDS)
+    & filters.command("stats")
+)
+async def bot_stats(client, message):
+
+    total_users = await users_col.count_documents({})
+    total_files = await episodes_col.count_documents({})
+    total_series = await series_col.count_documents({})
+
+    video_files = await episodes_col.count_documents({
+        "file_type": "video"
+    })
+
+    document_files = await episodes_col.count_documents({
+        "file_type": "document"
+    })
+
+    text = (
+        "📊 **SERIES BOT STATISTICS**\n\n"
+        f"👥 Total Users Started: `{total_users}`\n\n"
+        f"📁 Total Files: `{total_files}`\n"
+        f"📺 Total Series: `{total_series}`\n\n"
+        f"🎬 Video Files: `{video_files}`\n"
+        f"📄 Document Files: `{document_files}`"
+    )
+
+    await message.reply_text(text)
 
 
 # ================= ADMIN POSTER SYSTEM =================
