@@ -243,14 +243,6 @@ async def start_command(client, message):
             )
             return
 
-        await message.reply_text(
-            f"📥 Sending {len(files)} file(s)...\n"
-            f"📺 {request['series_name']}\n"
-            f"🌐 {request['language']} | "
-            f"Season {request['season']:02d}\n"
-            f"🎞 {request['quality']}"
-        )
-
         sent = 0
 
         for item in files:
@@ -277,10 +269,6 @@ async def start_command(client, message):
 
             sent += 1
             await asyncio.sleep(0.5)
-
-        await message.reply_text(
-            f"✅ Sent {sent} file(s)."
-        )
         return
 
     await send_welcome(client, message)
