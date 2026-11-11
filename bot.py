@@ -421,88 +421,6 @@ async def save_series_poster(client, message):
     )
 
 
-
-# ================= ADMIN UPLOAD =================
-
-@app.on_message(
-    filters.private
-    & filters.user(ADMIN_IDS)
-    & (filters.video | filters.document)
-)
-async def save_episode(client, message):
-
-    media = message.video or message.document
-
-    if not media:
-        return
-
-    if message.document:
-        mime = message.document.mime_type or ""
-
-        if not mime.startswith("video/"):
-            await message.reply_text(
-                "❌ Please upload a video file."
-            )
-            return
-
-    if not message.caption:
-        await message.reply_text(
-            "❌ Caption missing!\n\n"
-            "Use this format:\n\n"
-            "Series Name: My Test Series\n"
-            "Language: English\n"
-            "Season: 02\n"
-            "Quality: 720p\n"
-            "Episode: 05"
-        )
-        return
-
-    try:
-        data = parse_caption(message.caption)
-    except ValueError as error:
-        await message.reply_text(f"❌ {error}")
-        return
-
-    series = await series_col.find_one_and_update(
-        {"series_key": data["series_key"]},
-        {
-            "$set": {
-                "title": data["series_name"],
-                "series_key": data["series_key"]
-            },
-            "$setOnInsert": {
-                "created_at": datetime.now(timezone.utc)
-            }
-        },
-        upsert=True,
-        return_document=ReturnDocument.AFTER
-    )
-
-    episode_data = {
-        "series_id": series["_id"],
-        "series_name": data["series_name"],
-        "series_key": data["series_key"],
-        "language": data["language"],
-        "season": data["season"],
-        "quality": data["quality"],
-        "episode": data["episode"],
-        "file_id": media.file_id,
-        "file_type": "video" if message.video else "document",
-        "created_at": datetime.now(timezone.utc)
-    }
-
-    await episodes_col.insert_one(episode_data)
-
-    await message.reply_text(
-        "✅ Episode saved successfully!\n\n"
-        f"📺 Series: {data['series_name']}\n"
-        f"🌐 Language: {data['language']}\n"
-        f"📂 Season: {data['season']:02d}\n"
-        f"🎞 Quality: {data['quality']}\n"
-        f"🎬 Episode: {data['episode']:02d}"
-    )
-
-
 # ================= PRIVATE CHANNEL BATCH IMPORT =================
 
 import re
@@ -735,7 +653,8 @@ async def cancel_batch(client, message):
     filters.private
     & filters.user(ADMIN_IDS)
     & filters.text
-    & ~filters.command(["batch", "cancelbatch", "addposter"])
+    & ~filters.command(["batch", "cancelbatch", "addposter"]),
+    group=1
 )
 async def batch_link_input(client, message):
 
