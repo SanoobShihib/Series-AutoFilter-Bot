@@ -2,6 +2,7 @@ import os
 import re
 import asyncio
 import secrets
+import aiohttp
 from datetime import datetime, timezone
 
 from aiohttp import web
@@ -28,6 +29,7 @@ ADMIN_IDS = [
 
 PORT = int(os.environ.get("PORT", 10000))
 
+OMDB_API_KEY = os.environ.get("OMDB_API_KEY", "").strip()
 
 # ================= DATABASE =================
 
@@ -185,6 +187,46 @@ async def update_state(user_id, data):
         {"$set": data},
         upsert=True
     )
+
+async def fetch_omdb_metadata(series_name):
+
+    if not OMDB_API_KEY:
+        return {}
+
+    url = "https://www.omdbapi.com/"
+
+    try:
+        async with aiohttp.ClientSession() as session:
+
+            async with session.get(
+                url,
+                params={
+                    "apikey": OMDB_API_KEY,
+                    "t": series_name,
+                    "type": "series"
+                },
+                timeout=aiohttp.ClientTimeout(total=15)
+            ) as response:
+
+                data = await response.json()
+
+        if data.get("Response") != "True":
+            return {}
+
+        return {
+            "year": data.get("Year", "N/A"),
+            "genre": data.get("Genre", "N/A"),
+            "rating": data.get("imdbRating", "N/A"),
+            "poster": (
+                data.get("Poster")
+                if data.get("Poster") != "N/A"
+                else None
+            )
+        }
+
+    except Exception as e:
+        print("OMDb Error:", e)
+        return {}
 
 
 # ================= START =================
@@ -749,33 +791,19 @@ async def select_series(client, query):
     try:
         series_id = ObjectId(series_id)
     except Exception:
-        await query.answer(
-            "Invalid series.",
-            show_alert=True
-        )
+        await query.answer("Invalid series.", show_alert=True)
         return
 
-    series = await series_col.find_one({
-        "_id": series_id
-    })
+    series = await series_col.find_one({"_id": series_id})
 
     if not series:
-        await query.answer(
-            "Series not found.",
-            show_alert=True
-        )
+        await query.answer("Series not found.", show_alert=True)
         return
 
-    languages = await get_options(
-        series_id,
-        "language"
-    )
+    languages = await get_options(series_id, "language")
 
     if not languages:
-        await query.answer(
-            "No episodes found.",
-            show_alert=True
-        )
+        await query.answer("No episodes found.", show_alert=True)
         return
 
     await update_state(
@@ -789,22 +817,33 @@ async def select_series(client, query):
         }
     )
 
+    info = await fetch_omdb_metadata(series["title"])
+
+    genre = info.get("genre", "N/A")
+    rating = info.get("rating", "N/A")
+    year = info.get("year", "N/A")
+
     caption = (
-        f"📺 {series['title']}\n\n"
-        "🌐 Select Language:"
+        f"🎬 **Title:** `{series['title']}`\n"
+        f"📅 **Released On:** `{year}`\n"
+        f"🎭 **Genre:** `{genre}`\n"
+        f"⭐ **Rating:** `{rating}`\n\n"
+        f"🌐 **Available Languages:**"
     )
 
     keyboard = make_buttons(languages, "l")
 
-    poster_id = series.get("poster_file_id")
+    poster = (
+        series.get("poster_file_id")
+        or info.get("poster")
+    )
 
-    if poster_id:
+    if poster:
         await client.send_photo(
             chat_id=query.message.chat.id,
-            photo=poster_id,
+            photo=poster,
             caption=caption,
-            reply_markup=keyboard,
-            reply_to_message_id=query.message.reply_to_message_id
+            reply_markup=keyboard
         )
 
         await query.message.delete()
