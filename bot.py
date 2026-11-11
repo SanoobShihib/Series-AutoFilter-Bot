@@ -51,6 +51,55 @@ app = Client(
 )
 
 
+# ================= WELCOME SETTINGS =================
+
+WELCOME_PHOTO = "https://n.uguu.se/BHoqTojg.jpeg"
+
+GROUP_LINK = "https://t.me/+Ik14BdOewjQzYjI1"
+CHANNEL_LINK = "https://t.me/Flim_maxx"
+
+
+async def send_welcome(client, message):
+
+    me = await client.get_me()
+
+    buttons = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "➕ ADD ME TO YOUR GROUP",
+                url=f"https://t.me/{me.username}?startgroup=true"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "↗ JOIN TO GROUP",
+                url="https://t.me/+Ik14BdOewjQzYjI1"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "↗ JOIN TO CHANNEL",
+                url="https://t.me/Flim_maxx"
+            )
+        ]
+    ])
+
+    caption = (
+        "⚡ **WELCOME TO THE SERIES ZONE** ⚡\n\n"
+        "🤖 ഞാൻ ഒരു Series Bot ആണ്.\n"
+        "🎬 നിങ്ങൾക്ക് ഇഷ്ടപ്പെട്ട Series തിരയാനും "
+        "ലഭ്യമായ Episodes കണ്ടെത്താനും കഴിയും.\n\n"
+        "🔍 ഗ്രൂപ്പിൽ Series Name Search ചെയ്യൂ!"
+    )
+
+    await message.reply_photo(
+        photo=WELCOME_PHOTO,
+        caption=caption,
+        reply_markup=buttons
+    )
+
+
+
 # ================= HELPERS =================
 
 def normalize(text):
@@ -218,11 +267,7 @@ async def start_command(client, message):
         )
         return
 
-    await message.reply_text(
-        "👋 Welcome to Series Bot!\n\n"
-        "Search for a series in the group, "
-        "then press GET FILES."
-    )
+    await send_welcome(client, message)
 
 
 # ================= ADMIN POSTER SYSTEM =================
