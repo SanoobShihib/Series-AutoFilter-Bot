@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 
 from aiohttp import web
 from motor.motor_asyncio import AsyncIOMotorClient
-from bson import ObjectId, ReturnDocument
+from bson import ObjectId
+from pymongo import ReturnDocument
 
 from pyrogram import Client, filters, idle
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
