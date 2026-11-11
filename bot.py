@@ -732,7 +732,6 @@ async def search_series(client, message):
     }).limit(10).to_list(length=10)
 
     if not results:
-        await message.reply_text("❌ No series found.")
         return
 
     buttons = []
@@ -812,10 +811,12 @@ async def select_series(client, query):
     poster_id = series.get("poster_file_id")
 
     if poster_id:
-        await query.message.reply_photo(
+        await client.send_photo(
+            chat_id=query.message.chat.id,
             photo=poster_id,
             caption=caption,
-            reply_markup=keyboard
+            reply_markup=keyboard,
+            reply_to_message_id=query.message.reply_to_message_id
         )
 
         await query.message.delete()
@@ -827,8 +828,6 @@ async def select_series(client, query):
         )
 
     await query.answer()
-
-
 
 # ================= LANGUAGE CALLBACK =================
 
