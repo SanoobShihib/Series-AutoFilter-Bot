@@ -838,24 +838,31 @@ async def select_series(client, query):
         or info.get("poster")
     )
 
+    reply_id = (
+        query.message.reply_to_message_id
+        or query.message.id
+    )
+
     if poster:
         await client.send_photo(
             chat_id=query.message.chat.id,
             photo=poster,
             caption=caption,
-            reply_markup=keyboard
+            reply_markup=keyboard,
+            reply_to_message_id=reply_id
         )
-
-        await query.message.delete()
 
     else:
-        await query.message.edit_text(
-            caption,
-            reply_markup=keyboard
+        await client.send_message(
+            chat_id=query.message.chat.id,
+            text=caption,
+            reply_markup=keyboard,
+            reply_to_message_id=reply_id
         )
 
+    await query.message.delete()
     await query.answer()
-
+    
 # ================= LANGUAGE CALLBACK =================
 
 @app.on_callback_query(
