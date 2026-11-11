@@ -38,6 +38,7 @@ series_col = db["series"]
 episodes_col = db["episodes"]
 states_col = db["states"]
 get_files_col = db["get_files_tokens"]
+poster_sessions_col = db["poster_sessions"]
 
 
 # ================= BOT =================
@@ -224,6 +225,110 @@ async def start_command(client, message):
     )
 
 
+# ================= ADMIN POSTER SYSTEM =================
+
+@app.on_message(
+    filters.private
+    & filters.user(ADMIN_IDS)
+    & filters.command("addposter")
+)
+async def add_poster_command(client, message):
+
+    await poster_sessions_col.update_one(
+        {"user_id": message.from_user.id},
+        {"$set": {"step": "waiting_series"}},
+        upsert=True
+    )
+
+    await message.reply_text(
+        "📸 Send the Series Name for its Poster.\n\n"
+        "Example: Stranger Things"
+    )
+
+
+@app.on_message(
+    filters.private
+    & filters.user(ADMIN_IDS)
+    & filters.text
+    & ~filters.command(["addposter"])
+)
+async def poster_series_name(client, message):
+
+    session = await poster_sessions_col.find_one(
+        {"user_id": message.from_user.id}
+    )
+
+    if not session or session.get("step") != "waiting_series":
+        return
+
+    series_name = message.text.strip()
+
+    series = await series_col.find_one({
+        "series_key": normalize(series_name)
+    })
+
+    if not series:
+        await message.reply_text(
+            "❌ Series not found!\n\n"
+            "Please upload at least one episode "
+            "for this series first."
+        )
+        return
+
+    await poster_sessions_col.update_one(
+        {"user_id": message.from_user.id},
+        {
+            "$set": {
+                "step": "waiting_photo",
+                "series_id": series["_id"],
+                "series_name": series["title"]
+            }
+        }
+    )
+
+    await message.reply_text(
+        f"✅ Series: {series['title']}\n\n"
+        "Now send the Poster Photo."
+    )
+
+
+@app.on_message(
+    filters.private
+    & filters.user(ADMIN_IDS)
+    & filters.photo
+)
+async def save_series_poster(client, message):
+
+    session = await poster_sessions_col.find_one(
+        {"user_id": message.from_user.id}
+    )
+
+    if not session or session.get("step") != "waiting_photo":
+        return
+
+    photo_id = message.photo.file_id
+
+    await series_col.update_one(
+        {"_id": session["series_id"]},
+        {
+            "$set": {
+                "poster_file_id": photo_id
+            }
+        }
+    )
+
+    await poster_sessions_col.delete_one(
+        {"user_id": message.from_user.id}
+    )
+
+    await message.reply_text(
+        f"✅ Poster saved successfully!\n\n"
+        f"📺 Series: {session['series_name']}\n"
+        "You can replace it anytime using /addposter."
+    )
+
+
+
 # ================= ADMIN UPLOAD =================
 
 @app.on_message(
@@ -346,6 +451,7 @@ async def search_series(client, message):
     )
 
 
+
 # ================= SERIES CALLBACK =================
 
 @app.on_callback_query(filters.regex(r"^s:"))
@@ -396,13 +502,32 @@ async def select_series(client, query):
         }
     )
 
-    await query.message.edit_text(
+    caption = (
         f"📺 {series['title']}\n\n"
-        "Select Language:",
-        reply_markup=make_buttons(languages, "l")
+        "🌐 Select Language:"
     )
 
+    keyboard = make_buttons(languages, "l")
+
+    poster_id = series.get("poster_file_id")
+
+    if poster_id:
+        await query.message.reply_photo(
+            photo=poster_id,
+            caption=caption,
+            reply_markup=keyboard
+        )
+
+        await query.message.delete()
+
+    else:
+        await query.message.edit_text(
+            caption,
+            reply_markup=keyboard
+        )
+
     await query.answer()
+
 
 
 # ================= LANGUAGE CALLBACK =================
