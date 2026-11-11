@@ -37,7 +37,7 @@ PORT = int(os.environ.get("PORT", 10000))
 # ================= DATABASE =================
 
 mongo = AsyncIOMotorClient(MONGO_URI)
-db = mongo["SeriesBot"]
+db = mongo["seriesbot"]
 
 series_col = db["series"]
 episodes_col = db["episodes"]
