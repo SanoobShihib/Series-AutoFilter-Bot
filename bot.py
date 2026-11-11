@@ -40,7 +40,7 @@ states_col = db["states"]
 get_files_col = db["get_files_tokens"]
 poster_sessions_col = db["poster_sessions"]
 users_col = db["users"]
-
+batch_sessions_col = db["batch_sessions"]
 
 # ================= BOT =================
 
@@ -500,6 +500,288 @@ async def save_episode(client, message):
         f"📂 Season: {data['season']:02d}\n"
         f"🎞 Quality: {data['quality']}\n"
         f"🎬 Episode: {data['episode']:02d}"
+    )
+
+
+# ================= PRIVATE CHANNEL BATCH IMPORT =================
+
+import re
+import asyncio
+from datetime import datetime, timezone
+from pymongo import ReturnDocument
+
+PRIVATE_LINK_RE = re.compile(
+    r"(?:https?://)?(?:www\.)?t\.me/c/(\d+)/(?:\d+/)?(\d+)(?:\?.*)?$",
+    re.IGNORECASE
+)
+
+
+def parse_private_link(link):
+    match = PRIVATE_LINK_RE.fullmatch(link.strip().rstrip("/"))
+
+    if not match:
+        raise ValueError("Invalid private channel message link")
+
+    channel_id, message_id = match.groups()
+
+    return int("-100" + channel_id), int(message_id)
+
+
+async def import_channel_batch(client, message, first_link, last_link):
+
+    try:
+        first_chat, first_id = parse_private_link(first_link)
+        last_chat, last_id = parse_private_link(last_link)
+
+    except ValueError as e:
+        await message.reply_text(f"❌ {e}")
+        return
+
+    if first_chat != last_chat:
+        await message.reply_text(
+            "❌ Both links must belong to the same channel."
+        )
+        return
+
+    if first_id > last_id:
+        await message.reply_text(
+            "❌ First link must be before last link."
+        )
+        return
+
+    total = last_id - first_id + 1
+
+    if total > 20000:
+        await message.reply_text(
+            "❌ Maximum 20,000 message IDs per batch."
+        )
+        return
+
+    status = await message.reply_text(
+        f"⏳ Batch processing started!\n"
+        f"Total messages: {total}"
+    )
+
+    saved = 0
+    skipped = 0
+    duplicates = 0
+    checked = 0
+
+    try:
+
+        for start in range(first_id, last_id + 1, 100):
+
+            ids = list(
+                range(start, min(start + 100, last_id + 1))
+            )
+
+            messages = await client.get_messages(
+                first_chat,
+                message_ids=ids
+            )
+
+            if not isinstance(messages, list):
+                messages = [messages]
+
+            for msg in messages:
+
+                checked += 1
+
+                if not msg:
+                    skipped += 1
+                    continue
+
+                media = msg.video or msg.document
+
+                if not media:
+                    skipped += 1
+                    continue
+
+                if msg.document:
+                    mime = msg.document.mime_type or ""
+
+                    if not mime.startswith("video/"):
+                        skipped += 1
+                        continue
+
+                if not msg.caption:
+                    skipped += 1
+                    continue
+
+                try:
+                    data = parse_caption(msg.caption)
+                except ValueError:
+                    skipped += 1
+                    continue
+
+                series = await series_col.find_one_and_update(
+                    {"series_key": data["series_key"]},
+                    {
+                        "$set": {
+                            "title": data["series_name"],
+                            "series_key": data["series_key"]
+                        },
+                        "$setOnInsert": {
+                            "created_at": datetime.now(timezone.utc)
+                        }
+                    },
+                    upsert=True,
+                    return_document=ReturnDocument.AFTER
+                )
+
+                episode_filter = {
+                    "series_key": data["series_key"],
+                    "language": data["language"],
+                    "season": data["season"],
+                    "quality": data["quality"],
+                    "episode": data["episode"]
+                }
+
+                result = await episodes_col.update_one(
+                    episode_filter,
+                    {
+                        "$setOnInsert": {
+                            "series_id": series["_id"],
+                            "series_name": data["series_name"],
+                            "series_key": data["series_key"],
+                            "language": data["language"],
+                            "season": data["season"],
+                            "quality": data["quality"],
+                            "episode": data["episode"],
+                            "file_id": media.file_id,
+                            "file_type": (
+                                "video" if msg.video else "document"
+                            ),
+                            "source_chat_id": first_chat,
+                            "source_message_id": msg.id,
+                            "created_at": datetime.now(timezone.utc)
+                        }
+                    },
+                    upsert=True
+                )
+
+                if result.upserted_id:
+                    saved += 1
+                else:
+                    duplicates += 1
+
+            await asyncio.sleep(0.15)
+
+    except Exception as e:
+
+        await status.edit_text(
+            f"❌ Batch failed!\n"
+            f"Error: {str(e)[:300]}\n"
+            f"Saved: {saved}"
+        )
+        return
+
+    await status.edit_text(
+        "✅ BATCH IMPORT COMPLETED\n\n"
+        f"🔎 Checked: {checked}\n"
+        f"✅ Saved: {saved}\n"
+        f"♻️ Duplicates: {duplicates}\n"
+        f"⏭ Skipped: {skipped}"
+    )
+
+
+# ================= BATCH COMMAND =================
+
+@app.on_message(
+    filters.private
+    & filters.user(ADMIN_IDS)
+    & filters.command("batch")
+)
+async def batch_command(client, message):
+
+    links = [
+        x.strip()
+        for x in (message.text or "").splitlines()[1:]
+        if x.strip()
+    ]
+
+    if len(links) >= 2:
+        await import_channel_batch(
+            client, message, links[0], links[1]
+        )
+        return
+
+    await batch_sessions_col.update_one(
+        {"user_id": message.from_user.id},
+        {"$set": {"step": "first_link"}},
+        upsert=True
+    )
+
+    await message.reply_text(
+        "🔗 Send FIRST message link."
+    )
+
+
+@app.on_message(
+    filters.private
+    & filters.user(ADMIN_IDS)
+    & filters.command("cancelbatch")
+)
+async def cancel_batch(client, message):
+
+    await batch_sessions_col.delete_one(
+        {"user_id": message.from_user.id}
+    )
+
+    await message.reply_text("✅ Batch cancelled.")
+
+
+@app.on_message(
+    filters.private
+    & filters.user(ADMIN_IDS)
+    & filters.text
+    & ~filters.command(["batch", "cancelbatch", "addposter"])
+)
+async def batch_link_input(client, message):
+
+    session = await batch_sessions_col.find_one(
+        {"user_id": message.from_user.id}
+    )
+
+    if not session:
+        return
+
+    link = message.text.strip()
+
+    try:
+        parse_private_link(link)
+    except ValueError:
+        await message.reply_text(
+            "❌ Invalid message link. Try again."
+        )
+        return
+
+    if session["step"] == "first_link":
+
+        await batch_sessions_col.update_one(
+            {"user_id": message.from_user.id},
+            {
+                "$set": {
+                    "step": "last_link",
+                    "first_link": link
+                }
+            }
+        )
+
+        await message.reply_text(
+            "✅ First link received!\n"
+            "Now send LAST message link."
+        )
+        return
+
+    first_link = session["first_link"]
+
+    await batch_sessions_col.delete_one(
+        {"user_id": message.from_user.id}
+    )
+
+    await import_channel_batch(
+        client, message, first_link, link
     )
 
 
