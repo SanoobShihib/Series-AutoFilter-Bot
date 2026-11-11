@@ -343,7 +343,13 @@ async def add_poster_command(client, message):
     filters.private
     & filters.user(ADMIN_IDS)
     & filters.text
-    & ~filters.command(["addposter"])
+    & ~filters.command([
+        "addposter",
+        "batch",
+        "cancelbatch",
+        "stats",
+        "start"
+    ])
 )
 async def poster_series_name(client, message):
 
