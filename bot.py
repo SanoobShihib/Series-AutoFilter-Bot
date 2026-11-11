@@ -7,8 +7,15 @@ from aiohttp import web
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 
+# Fix for newer Python versions
+try:
+    asyncio.get_event_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
 from pyrogram import Client, filters, idle
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
 
 
 # ================= CONFIG =================
