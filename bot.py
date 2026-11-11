@@ -900,7 +900,7 @@ async def select_language(client, query):
         await query.answer("Series not found.")
         return
 
-    info = await get_series_metadata(series)
+    info = await fetch_omdb_metadata(series["title"])
 
     year = info.get("year", "N/A")
     genre = info.get("genre", "N/A")
