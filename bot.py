@@ -1,21 +1,15 @@
 import os
 import re
 import asyncio
-from datetime import datetime
+import secrets
+from datetime import datetime, timezone
 
 from aiohttp import web
 from motor.motor_asyncio import AsyncIOMotorClient
-from bson import ObjectId
-
-# Fix for newer Python versions
-try:
-    asyncio.get_event_loop()
-except RuntimeError:
-    asyncio.set_event_loop(asyncio.new_event_loop())
+from bson import ObjectId, ReturnDocument
 
 from pyrogram import Client, filters, idle
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
 
 
 # ================= CONFIG =================
@@ -42,6 +36,7 @@ db = mongo["seriesbot"]
 series_col = db["series"]
 episodes_col = db["episodes"]
 states_col = db["states"]
+get_files_col = db["get_files_tokens"]
 
 
 # ================= BOT =================
@@ -142,11 +137,89 @@ async def update_state(user_id, data):
 
 # ================= START =================
 
-@app.on_message(filters.command("start"))
+@app.on_message(filters.private & filters.command("start"))
 async def start_command(client, message):
+
+    if len(message.command) > 1:
+        token = message.command[1]
+
+        request = await get_files_col.find_one({"_id": token})
+
+        if not request:
+            await message.reply_text(
+                "❌ This Get Files link is invalid. "
+                "Please search again in the group."
+            )
+            return
+
+        if request["user_id"] != message.from_user.id:
+            await message.reply_text(
+                "❌ This link belongs to another user. "
+                "Please create your own link."
+            )
+            return
+
+        query_filter = {
+            "series_id": request["series_id"],
+            "language": request["language"],
+            "season": request["season"],
+            "quality": request["quality"]
+        }
+
+        files = await episodes_col.find(
+            query_filter
+        ).sort("episode", 1).to_list(length=None)
+
+        if not files:
+            await message.reply_text(
+                "❌ No files found for this selection."
+            )
+            return
+
+        await message.reply_text(
+            f"📥 Sending {len(files)} file(s)...\n"
+            f"📺 {request['series_name']}\n"
+            f"🌐 {request['language']} | "
+            f"Season {request['season']:02d}\n"
+            f"🎞 {request['quality']}"
+        )
+
+        sent = 0
+
+        for item in files:
+            caption = (
+                f"📺 {item['series_name']}\n"
+                f"🌐 Language: {item['language']}\n"
+                f"📂 Season: {item['season']:02d}\n"
+                f"🎞 Quality: {item['quality']}\n"
+                f"🎬 Episode: {item['episode']:02d}"
+            )
+
+            if item["file_type"] == "video":
+                await client.send_video(
+                    message.chat.id,
+                    item["file_id"],
+                    caption=caption
+                )
+            else:
+                await client.send_document(
+                    message.chat.id,
+                    item["file_id"],
+                    caption=caption
+                )
+
+            sent += 1
+            await asyncio.sleep(0.5)
+
+        await message.reply_text(
+            f"✅ Sent {sent} file(s)."
+        )
+        return
+
     await message.reply_text(
         "👋 Welcome to Series Bot!\n\n"
-        "Send a series name to search episodes."
+        "Search for a series in the group, "
+        "then press GET FILES."
     )
 
 
@@ -166,15 +239,18 @@ async def save_episode(client, message):
 
     if message.document:
         mime = message.document.mime_type or ""
+
         if not mime.startswith("video/"):
-            await message.reply_text("❌ Please upload a video file.")
+            await message.reply_text(
+                "❌ Please upload a video file."
+            )
             return
 
     if not message.caption:
         await message.reply_text(
             "❌ Caption missing!\n\n"
             "Use this format:\n\n"
-            "Series Name: Stranger Things\n"
+            "Series Name: My Test Series\n"
             "Language: English\n"
             "Season: 02\n"
             "Quality: 720p\n"
@@ -196,17 +272,12 @@ async def save_episode(client, message):
                 "series_key": data["series_key"]
             },
             "$setOnInsert": {
-                "created_at": datetime.utcnow()
+                "created_at": datetime.now(timezone.utc)
             }
         },
         upsert=True,
-        return_document=True
+        return_document=ReturnDocument.AFTER
     )
-
-    if not series:
-        series = await series_col.find_one(
-            {"series_key": data["series_key"]}
-        )
 
     episode_data = {
         "series_id": series["_id"],
@@ -218,7 +289,7 @@ async def save_episode(client, message):
         "episode": data["episode"],
         "file_id": media.file_id,
         "file_type": "video" if message.video else "document",
-        "created_at": datetime.utcnow()
+        "created_at": datetime.now(timezone.utc)
     }
 
     await episodes_col.insert_one(episode_data)
@@ -235,7 +306,11 @@ async def save_episode(client, message):
 
 # ================= SERIES SEARCH =================
 
-@app.on_message(filters.text & ~filters.command(["start"]))
+@app.on_message(
+    filters.text
+    & filters.group
+    & ~filters.command(["start"])
+)
 async def search_series(client, message):
 
     query = message.text.strip()
@@ -244,7 +319,10 @@ async def search_series(client, message):
         return
 
     results = await series_col.find({
-        "title": {"$regex": re.escape(query), "$options": "i"}
+        "title": {
+            "$regex": re.escape(query),
+            "$options": "i"
+        }
     }).limit(10).to_list(length=10)
 
     if not results:
@@ -277,19 +355,33 @@ async def select_series(client, query):
     try:
         series_id = ObjectId(series_id)
     except Exception:
-        await query.answer("Invalid series.", show_alert=True)
+        await query.answer(
+            "Invalid series.",
+            show_alert=True
+        )
         return
 
-    series = await series_col.find_one({"_id": series_id})
+    series = await series_col.find_one({
+        "_id": series_id
+    })
 
     if not series:
-        await query.answer("Series not found.", show_alert=True)
+        await query.answer(
+            "Series not found.",
+            show_alert=True
+        )
         return
 
-    languages = await get_options(series_id, "language")
+    languages = await get_options(
+        series_id,
+        "language"
+    )
 
     if not languages:
-        await query.answer("No episodes found.", show_alert=True)
+        await query.answer(
+            "No episodes found.",
+            show_alert=True
+        )
         return
 
     await update_state(
@@ -304,7 +396,8 @@ async def select_series(client, query):
     )
 
     await query.message.edit_text(
-        f"📺 {series['title']}\n\nSelect Language:",
+        f"📺 {series['title']}\n\n"
+        "Select Language:",
         reply_markup=make_buttons(languages, "l")
     )
 
@@ -313,16 +406,25 @@ async def select_series(client, query):
 
 # ================= LANGUAGE CALLBACK =================
 
-@app.on_callback_query(filters.regex(r"^l:\d+$"))
+@app.on_callback_query(
+    filters.regex(r"^l:\d+$")
+)
 async def select_language(client, query):
 
     state = await get_state(query.from_user.id)
 
     if not state:
-        await query.answer("Please search again.", show_alert=True)
+        await query.answer(
+            "Please search again.",
+            show_alert=True
+        )
         return
 
-    languages = await get_options(state["series_id"], "language")
+    languages = await get_options(
+        state["series_id"],
+        "language"
+    )
+
     index = int(query.data.split(":")[1])
 
     if index >= len(languages):
@@ -343,7 +445,8 @@ async def select_language(client, query):
     )
 
     await query.message.edit_text(
-        f"🌐 Language: {language}\n\nSelect Season:",
+        f"🌐 Language: {language}\n\n"
+        "Select Season:",
         reply_markup=make_buttons(seasons, "sn")
     )
 
@@ -352,13 +455,18 @@ async def select_language(client, query):
 
 # ================= SEASON CALLBACK =================
 
-@app.on_callback_query(filters.regex(r"^sn:\d+$"))
+@app.on_callback_query(
+    filters.regex(r"^sn:\d+$")
+)
 async def select_season(client, query):
 
     state = await get_state(query.from_user.id)
 
     if not state:
-        await query.answer("Please search again.", show_alert=True)
+        await query.answer(
+            "Please search again.",
+            show_alert=True
+        )
         return
 
     seasons = await get_options(
@@ -390,7 +498,8 @@ async def select_season(client, query):
     )
 
     await query.message.edit_text(
-        f"📂 Season: {season:02d}\n\nSelect Quality:",
+        f"📂 Season: {season:02d}\n\n"
+        "Select Quality:",
         reply_markup=make_buttons(qualities, "q")
     )
 
@@ -399,13 +508,18 @@ async def select_season(client, query):
 
 # ================= QUALITY CALLBACK =================
 
-@app.on_callback_query(filters.regex(r"^q:\d+$"))
+@app.on_callback_query(
+    filters.regex(r"^q:\d+$")
+)
 async def select_quality(client, query):
 
     state = await get_state(query.from_user.id)
 
     if not state:
-        await query.answer("Please search again.", show_alert=True)
+        await query.answer(
+            "Please search again.",
+            show_alert=True
+        )
         return
 
     qualities = await get_options(
@@ -420,106 +534,64 @@ async def select_quality(client, query):
     index = int(query.data.split(":")[1])
 
     if index >= len(qualities):
-        await query.answer("Invalid selection.")
+        await query.answer(
+            "Invalid selection.",
+            show_alert=True
+        )
         return
 
     quality = qualities[index]
-
-    episodes = await get_options(
-        state["series_id"],
-        "episode",
-        {
-            "language": state["language"],
-            "season": state["season"],
-            "quality": quality
-        }
-    )
 
     await update_state(
         query.from_user.id,
         {"quality": quality}
     )
 
+    token = secrets.token_urlsafe(10)
+
+    await get_files_col.insert_one({
+        "_id": token,
+        "user_id": query.from_user.id,
+        "series_id": state["series_id"],
+        "series_name": state["series_name"],
+        "language": state["language"],
+        "season": state["season"],
+        "quality": quality,
+        "created_at": datetime.now(timezone.utc)
+    })
+
+    me = await client.get_me()
+
+    deep_link = (
+        f"https://t.me/{me.username}?start={token}"
+    )
+
     await query.message.edit_text(
-        f"🎞 Quality: {quality}\n\nSelect Episode:",
-        reply_markup=make_buttons(
-            [f"Episode {ep:02d}" for ep in episodes],
-            "e"
-        )
+        f"📺 {state['series_name']}\n"
+        f"🌐 Language: {state['language']}\n"
+        f"📂 Season: {state['season']:02d}\n"
+        f"🎞 Quality: {quality}\n\n"
+        "Press below to receive all files "
+        "in private chat.",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "📥 GET FILES",
+                    url=deep_link
+                )
+            ]
+        ])
     )
 
     await query.answer()
 
 
-# ================= EPISODE CALLBACK =================
-
-@app.on_callback_query(filters.regex(r"^e:\d+$"))
-async def select_episode(client, query):
-
-    state = await get_state(query.from_user.id)
-
-    if not state:
-        await query.answer("Please search again.", show_alert=True)
-        return
-
-    episodes = await get_options(
-        state["series_id"],
-        "episode",
-        {
-            "language": state["language"],
-            "season": state["season"],
-            "quality": state["quality"]
-        }
-    )
-
-    index = int(query.data.split(":")[1])
-
-    if index >= len(episodes):
-        await query.answer("Invalid episode.")
-        return
-
-    episode_number = episodes[index]
-
-    episode = await episodes_col.find_one({
-        "series_id": state["series_id"],
-        "language": state["language"],
-        "season": state["season"],
-        "quality": state["quality"],
-        "episode": episode_number
-    })
-
-    if not episode:
-        await query.answer("File not found.", show_alert=True)
-        return
-
-    await query.answer("Sending episode...")
-
-    caption = (
-        f"📺 {state['series_name']}\n"
-        f"🌐 Language: {state['language']}\n"
-        f"📂 Season: {state['season']:02d}\n"
-        f"🎞 Quality: {state['quality']}\n"
-        f"🎬 Episode: {episode_number:02d}"
-    )
-
-    if episode["file_type"] == "video":
-        await client.send_video(
-            query.message.chat.id,
-            episode["file_id"],
-            caption=caption
-        )
-    else:
-        await client.send_document(
-            query.message.chat.id,
-            episode["file_id"],
-            caption=caption
-        )
-
-
 # ================= RENDER WEB SERVER =================
 
 async def health(request):
-    return web.Response(text="Series Bot is running!")
+    return web.Response(
+        text="Series Bot is running!"
+    )
 
 
 async def main():
@@ -532,13 +604,19 @@ async def main():
     runner = web.AppRunner(web_app)
     await runner.setup()
 
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    site = web.TCPSite(
+        runner,
+        "0.0.0.0",
+        PORT
+    )
+
     await site.start()
 
     print("Series Bot Started Successfully!")
 
     try:
         await idle()
+
     finally:
         await runner.cleanup()
         await app.stop()
