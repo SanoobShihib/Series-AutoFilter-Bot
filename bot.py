@@ -892,6 +892,20 @@ async def select_language(client, query):
 
     language = languages[index]
 
+    series = await series_col.find_one(
+        {"_id": state["series_id"]}
+    )
+
+    if not series:
+        await query.answer("Series not found.")
+        return
+
+    info = await get_series_metadata(series)
+
+    year = info.get("year", "N/A")
+    genre = info.get("genre", "N/A")
+    rating = info.get("rating", "N/A")
+
     seasons = await get_options(
         state["series_id"],
         "season",
@@ -903,11 +917,27 @@ async def select_language(client, query):
         {"language": language}
     )
 
-    await query.message.edit_text(
-        f"🌐 Language: {language}\n\n"
-        "Select Season:",
-        reply_markup=make_buttons(seasons, "sn")
+    caption = (
+        f"○ **Title:** {series['title']}\n"
+        f"○ **Released On:** {year}\n"
+        f"○ **Genre:** {genre}\n"
+        f"○ **Rating:** {rating}\n\n"
+        f"<blockquote>▪️Language: {language}</blockquote>\n"
+        f"**Available Seasons:**"
     )
+
+    keyboard = make_buttons(seasons, "sn")
+
+    if query.message.photo:
+        await query.message.edit_caption(
+            caption,
+            reply_markup=keyboard
+        )
+    else:
+        await query.message.edit_text(
+            caption,
+            reply_markup=keyboard
+        )
 
     await query.answer()
 
