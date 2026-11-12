@@ -751,6 +751,11 @@ async def search_series(client, message):
 
     query = message.text.strip()
 
+    await update_state(
+        message.from_user.id,
+        {"search_query": query}
+    )
+
     if len(query) < 2:
         return
 
@@ -811,6 +816,11 @@ async def select_series(client, query):
         {
             "series_id": series_id,
             "series_name": series["title"],
+            "search_query": (
+                query.message.reply_to_message.text
+                if query.message.reply_to_message
+                else series["title"]
+            ),
             "language": None,
             "season": None,
             "quality": None
@@ -833,6 +843,13 @@ async def select_series(client, query):
 
     keyboard = make_buttons(languages, "l")
 
+    keyboard.inline_keyboard.append([
+        InlineKeyboardButton(
+            "⬅️ BACK",
+            callback_data="back:series"
+        )
+    ])
+    
     poster = (
         series.get("poster_file_id")
         or info.get("poster")
@@ -927,6 +944,13 @@ async def select_language(client, query):
     )
 
     keyboard = make_buttons(seasons, "sn")
+
+    keyboard.inline_keyboard.append([
+        InlineKeyboardButton(
+            "⬅️ BACK",
+            callback_data="back:language"
+        )
+    ])
 
     if query.message.photo:
         await query.message.edit_caption(
@@ -1024,6 +1048,13 @@ async def select_season(client, query):
         "q"
     )
 
+    keyboard.inline_keyboard.append([
+        InlineKeyboardButton(
+            "⬅️ BACK",
+            callback_data="back:season"
+        )
+    ])
+
     if query.message.photo:
         await query.message.edit_caption(
             caption=caption,
@@ -1038,6 +1069,166 @@ async def select_season(client, query):
     await query.answer()
 
 
+# ================= BACK NAVIGATION =================
+
+@app.on_callback_query(
+    filters.regex(r"^back:(series|language|season)$")
+)
+async def back_navigation(client, query):
+
+    state = await get_state(query.from_user.id)
+
+    if not state or not state.get("series_id"):
+        await query.answer(
+            "Please search again!",
+            show_alert=True
+        )
+        return
+
+    back_to = query.data.split(":")[1]
+    series_id = state["series_id"]
+
+    # BACK TO SERIES
+    if back_to == "series":
+
+        search_query = state.get("search_query")
+
+        if not search_query:
+            await query.answer(
+                "Please search again!",
+                show_alert=True
+            )
+            return
+
+        results = await series_col.find({
+            "title": {
+                "$regex": re.escape(search_query),
+                "$options": "i"
+            }
+        }).limit(10).to_list(length=10)
+
+        if not results:
+            await query.answer(
+                "No series found!",
+                show_alert=True
+            )
+            return
+
+        buttons = []
+
+        for item in results:
+            buttons.append([
+                InlineKeyboardButton(
+                    item["title"],
+                    callback_data=f"s:{item['_id']}"
+                )
+            ])
+
+        await query.message.delete()
+
+        await client.send_message(
+            query.message.chat.id,
+            "🔎 Select your series:",
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
+
+        await update_state(
+            query.from_user.id,
+            {
+                "series_id": None,
+                "series_name": None,
+                "language": None,
+                "season": None,
+                "quality": None
+            }
+        )
+
+    # BACK TO LANGUAGE
+    elif back_to == "language":
+
+        languages = await get_options(
+            series_id,
+            "language"
+        )
+
+        keyboard = make_buttons(languages, "l")
+
+        keyboard.inline_keyboard.append([
+            InlineKeyboardButton(
+                "⬅️ BACK",
+                callback_data="back:series"
+            )
+        ])
+
+        await update_state(
+            query.from_user.id,
+            {
+                "language": None,
+                "season": None,
+                "quality": None
+            }
+        )
+
+        caption = (
+            f"🎬 **Title:** `{state['series_name']}`\n\n"
+            "🌐 **Available Languages:**"
+        )
+
+        if query.message.photo:
+            await query.message.edit_caption(
+                caption=caption,
+                reply_markup=keyboard
+            )
+        else:
+            await query.message.edit_text(
+                caption,
+                reply_markup=keyboard
+            )
+
+    # BACK TO SEASON
+    elif back_to == "season":
+
+        seasons = await get_options(
+            series_id,
+            "season",
+            {"language": state["language"]}
+        )
+
+        keyboard = make_buttons(seasons, "sn")
+
+        keyboard.inline_keyboard.append([
+            InlineKeyboardButton(
+                "⬅️ BACK",
+                callback_data="back:language"
+            )
+        ])
+
+        await update_state(
+            query.from_user.id,
+            {
+                "season": None,
+                "quality": None
+            }
+        )
+
+        caption = (
+            f"🎬 **Title:** `{state['series_name']}`\n"
+            f"🌐 **Language:** `{state['language']}`\n\n"
+            "**Available Seasons:**"
+        )
+
+        if query.message.photo:
+            await query.message.edit_caption(
+                caption=caption,
+                reply_markup=keyboard
+            )
+        else:
+            await query.message.edit_text(
+                caption,
+                reply_markup=keyboard
+            )
+
+    await query.answer("⬅️ Back!")
 
 # ================= QUALITY CALLBACK =================
 
