@@ -69,19 +69,19 @@ async def send_welcome(client, message):
     buttons = InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
-                "➕ ADD ME TO YOUR GROUP",
+                "ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ",
                 url=f"https://t.me/{me.username}?startgroup=true"
             )
         ],
         [
             InlineKeyboardButton(
-                "↗ JOIN TO GROUP",
+                "ᴊᴏɪɴ ᴛᴏ ɢʀᴏᴜᴘ",
                 url="https://t.me/+Ik14BdOewjQzYjI1"
             )
         ],
         [
             InlineKeyboardButton(
-                "↗ JOIN TO CHANNEL",
+                "ᴊᴏɪɴ ᴛᴏ ᴄʜᴀɴɴᴇʟ",
                 url="https://t.me/Flim_maxx"
             )
         ]
@@ -848,7 +848,7 @@ async def select_series(client, query):
 
     keyboard.inline_keyboard.append([
         InlineKeyboardButton(
-            "⬅️ BACK",
+            "ʙᴀᴄᴋ",
             callback_data="back:series"
         )
     ])
@@ -950,7 +950,7 @@ async def select_language(client, query):
 
     keyboard.inline_keyboard.append([
         InlineKeyboardButton(
-            "⬅️ BACK",
+            "ʙᴀᴄᴋ",
             callback_data="back:language"
         )
     ])
@@ -1053,7 +1053,7 @@ async def select_season(client, query):
 
     keyboard.inline_keyboard.append([
         InlineKeyboardButton(
-            "⬅️ BACK",
+            "ʙᴀᴄᴋ",
             callback_data="back:season"
         )
     ])
@@ -1158,7 +1158,7 @@ async def back_navigation(client, query):
 
         keyboard.inline_keyboard.append([
             InlineKeyboardButton(
-                "⬅️ BACK",
+                "ʙᴀᴄᴋ",
                 callback_data="back:series"
             )
         ])
@@ -1201,7 +1201,7 @@ async def back_navigation(client, query):
 
         keyboard.inline_keyboard.append([
             InlineKeyboardButton(
-                "⬅️ BACK",
+                "ʙᴀᴄᴋ",
                 callback_data="back:language"
             )
         ])
@@ -1304,7 +1304,7 @@ async def select_quality(client, query):
     buttons = InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
-                "Get Files",
+                "ɢᴇᴛ ғɪʟᴇs",
                 url=deep_link
             )
         ]
