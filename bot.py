@@ -845,13 +845,6 @@ async def select_series(client, query):
     )
 
     keyboard = make_buttons(languages, "l")
-
-    keyboard.inline_keyboard.append([
-        InlineKeyboardButton(
-            "ʙᴀᴄᴋ",
-            callback_data="back:series"
-        )
-    ])
     
     poster = (
         series.get("poster_file_id")
