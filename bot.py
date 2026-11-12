@@ -1149,13 +1149,6 @@ async def back_navigation(client, query):
 
         keyboard = make_buttons(languages, "l")
 
-        keyboard.inline_keyboard.append([
-            InlineKeyboardButton(
-                "ʙᴀᴄᴋ",
-                callback_data="back:series"
-            )
-        ])
-
         await update_state(
             query.from_user.id,
             {
