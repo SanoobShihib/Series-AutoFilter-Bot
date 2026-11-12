@@ -939,7 +939,20 @@ async def select_language(client, query):
         f"**Available Seasons:**"
     )
 
-    keyboard = make_buttons(seasons, "sn")
+    buttons = []
+
+    for i, season in enumerate(seasons):
+        if i % 3 == 0:
+            buttons.append([])
+
+        buttons[-1].append(
+            InlineKeyboardButton(
+                str(season),
+                callback_data=f"sn:{i}"
+            )
+        )
+
+    keyboard = InlineKeyboardMarkup(buttons)  
 
     keyboard.inline_keyboard.append([
         InlineKeyboardButton(
