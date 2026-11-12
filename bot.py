@@ -88,11 +88,14 @@ async def send_welcome(client, message):
     ])
 
     caption = (
-        "⚡ **WELCOME TO THE SERIES ZONE** ⚡\n\n"
-        "🤖 ഞാൻ ഒരു Series Bot ആണ്.\n"
-        "🎬 നിങ്ങൾക്ക് ഇഷ്ടപ്പെട്ട Series തിരയാനും "
-        "ലഭ്യമായ Episodes കണ്ടെത്താനും കഴിയും.\n\n"
-        "🔍 ഗ്രൂപ്പിൽ Series Name Search ചെയ്യൂ!"
+        "⚡ **ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ sᴇʀɪᴇs ᴢᴏɴᴇ** ⚡\n\n"
+        "🤖 **ᴡᴀᴛᴄʜ ʏᴏᴜʀ ғᴀᴠᴏʀɪᴛᴇ sᴇʀɪᴇs ᴀɴʏᴛɪᴍᴇ!**\n\n"
+        "🎬 **sᴇᴀʀᴄʜ ғᴏʀ ʏᴏᴜʀ ғᴀᴠᴏʀɪᴛᴇ sᴇʀɪᴇs, "
+        "ғɪɴᴅ ᴀᴠᴀɪʟᴀʙʟᴇ ᴇᴘɪsᴏᴅᴇs ᴀɴᴅ ᴅᴏᴡɴʟᴏᴀᴅ ᴛʜᴇᴍ.**\n\n"
+        "🔍 **sᴇᴀʀᴄʜ sᴇʀɪᴇs ɴᴀᴍᴇ ɪɴ ᴛʜᴇ ɢʀᴏᴜᴘ!**\n\n"
+        "🍿 **sᴇᴀʀᴄʜ • sᴇʟᴇᴄᴛ • ᴇɴᴊᴏʏ**\n\n"
+        
+        "⟬ [ᴛᴇᴀᴍ ғʟɪᴍ ᴍᴀxx](https://t.me/Flim_maxx) ⟭"
     )
 
     await message.reply_photo(
