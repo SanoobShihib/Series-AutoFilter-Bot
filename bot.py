@@ -995,6 +995,7 @@ async def select_season(client, query):
     await query.answer()
 
 
+
 # ================= QUALITY CALLBACK =================
 
 @app.on_callback_query(
@@ -1055,24 +1056,36 @@ async def select_quality(client, query):
         f"https://t.me/{me.username}?start={token}"
     )
 
-    await query.message.edit_text(
+    text = (
         f"📺 {state['series_name']}\n"
         f"🌐 Language: {state['language']}\n"
         f"📂 Season: {state['season']:02d}\n"
         f"🎞 Quality: {quality}\n\n"
-        "Press below to receive all files "
-        "in private chat.",
-        reply_markup=InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(
-                    "📥 GET FILES",
-                    url=deep_link
-                )
-            ]
-        ])
+        "Press below to receive all files in private chat."
     )
 
+    buttons = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "Get Files",
+                url=deep_link
+            )
+        ]
+    ])
+
+    if query.message.photo:
+        await query.message.edit_caption(
+            caption=text,
+            reply_markup=buttons
+        )
+    else:
+        await query.message.edit_text(
+            text,
+            reply_markup=buttons
+        )
+
     await query.answer()
+
 
 
 # ================= RENDER WEB SERVER =================
