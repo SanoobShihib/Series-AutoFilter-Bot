@@ -942,6 +942,7 @@ async def select_language(client, query):
     await query.answer()
 
 
+
 # ================= SEASON CALLBACK =================
 
 @app.on_callback_query(
@@ -967,7 +968,10 @@ async def select_season(client, query):
     index = int(query.data.split(":")[1])
 
     if index >= len(seasons):
-        await query.answer("Invalid selection.")
+        await query.answer(
+            "Invalid selection.",
+            show_alert=True
+        )
         return
 
     season = seasons[index]
@@ -986,11 +990,50 @@ async def select_season(client, query):
         {"season": season}
     )
 
-    await query.message.edit_text(
-        f"📂 Season: {season:02d}\n\n"
-        "Select Quality:",
-        reply_markup=make_buttons(qualities, "q")
+    series = await series_col.find_one(
+        {"_id": state["series_id"]}
     )
+
+    if not series:
+        await query.answer(
+            "Series not found.",
+            show_alert=True
+        )
+        return
+
+    info = await fetch_omdb_metadata(
+        series["title"]
+    )
+
+    year = info.get("year", "N/A")
+    genre = info.get("genre", "N/A")
+    rating = info.get("rating", "N/A")
+
+    caption = (
+        f"○ **Title:** {series['title']}\n"
+        f"○ **Released On:** {year}\n"
+        f"○ **Genre:** {genre}\n"
+        f"○ **Rating:** {rating}\n"
+        f"▪️Language: {state['language']}\n"
+        f"▪️Season: Season {season}\n\n"
+        "**Select the quality you need...!**"
+    )
+
+    keyboard = make_buttons(
+        qualities,
+        "q"
+    )
+
+    if query.message.photo:
+        await query.message.edit_caption(
+            caption=caption,
+            reply_markup=keyboard
+        )
+    else:
+        await query.message.edit_text(
+            caption,
+            reply_markup=keyboard
+        )
 
     await query.answer()
 
