@@ -292,11 +292,14 @@ async def start_command(client, message):
 
         for item in files:
             caption = (
-                f"📺 {item['series_name']}\n"
+                f"{item['series_name']}\n"
+                "━━━━━━━━━━━━━━━━━━\n"
+                f"📺 Season: {item['season']:02d}\n"
+                f"🎞️ Episode: {item['episode']:02d}\n"
                 f"🌐 Language: {item['language']}\n"
-                f"📂 Season: {item['season']:02d}\n"
-                f"🎞 Quality: {item['quality']}\n"
-                f"🎬 Episode: {item['episode']:02d}"
+                f"📺 Quality: {item['quality']}\n"
+                "━━━━━━━━━━━━━━━━━━\n"
+                "⟬ ᴛᴇᴀᴍ ғʟɪᴍ ᴍᴀxx ⟭"
             )
 
             if item["file_type"] == "video":
