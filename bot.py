@@ -382,6 +382,7 @@ async def add_poster_command(client, message):
         "cancelbatch",
         "stats",
         "start"
+        "delete",
     ])
 )
 async def poster_series_name(client, message):
