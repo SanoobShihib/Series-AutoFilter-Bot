@@ -744,6 +744,7 @@ async def batch_link_input(client, message):
     )
 
 
+
 # ================= SERIES SEARCH =================
 
 @app.on_message(
@@ -763,9 +764,23 @@ async def search_series(client, message):
     if len(query) < 2:
         return
 
+    # Ignore spaces and punctuation differences
+    search_words = re.findall(
+        r"\w+",
+        query,
+        flags=re.UNICODE
+    )
+
+    if not search_words:
+        return
+
+    flexible_pattern = r"[\W_]*".join(
+        re.escape(word) for word in search_words
+    )
+
     results = await series_col.find({
         "title": {
-            "$regex": re.escape(query),
+            "$regex": flexible_pattern,
             "$options": "i"
         }
     }).limit(10).to_list(length=10)
@@ -787,6 +802,7 @@ async def search_series(client, message):
         "🔎 Select your series:",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
+
 
 
 
