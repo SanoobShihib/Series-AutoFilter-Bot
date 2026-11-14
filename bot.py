@@ -744,7 +744,6 @@ async def batch_link_input(client, message):
     )
 
 
-
 # ================= SERIES SEARCH =================
 
 @app.on_message(
@@ -756,6 +755,7 @@ async def search_series(client, message):
 
     query = message.text.strip()
 
+    # Save original search query
     await update_state(
         message.from_user.id,
         {"search_query": query}
@@ -764,20 +764,41 @@ async def search_series(client, message):
     if len(query) < 2:
         return
 
+    # Remove episode formats:
+    # S01E01
+    # S1 E1
+    # Season 1 Episode 1
+    # 1x01
+
+    series_query = re.sub(
+        r"\bS\d{1,2}\s*E\d{1,3}\b"
+        r"|\bSeason\s*\d+\s*Episode\s*\d+\b"
+        r"|\b\d{1,2}\s*x\s*\d{1,3}\b",
+        "",
+        query,
+        flags=re.IGNORECASE
+    ).strip(" -_:|.")
+
+    if len(series_query) < 2:
+        return
+
     # Ignore spaces and punctuation differences
     search_words = re.findall(
         r"\w+",
-        query,
+        series_query,
         flags=re.UNICODE
     )
 
     if not search_words:
         return
 
+    # Flexible search pattern
     flexible_pattern = r"[\W_]*".join(
-        re.escape(word) for word in search_words
+        re.escape(word)
+        for word in search_words
     )
 
+    # Search series in MongoDB
     results = await series_col.find({
         "title": {
             "$regex": flexible_pattern,
@@ -788,6 +809,7 @@ async def search_series(client, message):
     if not results:
         return
 
+    # Create series buttons
     buttons = []
 
     for item in results:
@@ -798,13 +820,13 @@ async def search_series(client, message):
             )
         ])
 
+    # Send search results
     await message.reply_text(
         "🔎 Select your series:",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-
-
+# ================= END SERIES SEARCH =================
 
 # ================= SERIES CALLBACK =================
 
