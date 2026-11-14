@@ -1323,6 +1323,171 @@ async def select_quality(client, query):
     await query.answer()
 
 
+# ================= DELETE SERIES SYSTEM =================
+
+@app.on_message(
+    filters.private
+    & filters.user(ADMIN_IDS)
+    & filters.command("delete")
+)
+async def delete_series_command(client, message):
+
+    if len(message.command) < 2:
+        await message.reply_text(
+            "❌ Please provide a series name.\n\n"
+            "Example:\n"
+            "/delete Stranger Things"
+        )
+        return
+
+    series_name = " ".join(message.command[1:]).strip()
+
+    series = await series_col.find_one({
+        "series_key": normalize(series_name)
+    })
+
+    if not series:
+        await message.reply_text(
+            f"❌ Series not found:\n`{series_name}`"
+        )
+        return
+
+    episode_count = await episodes_col.count_documents({
+        "$or": [
+            {"series_id": series["_id"]},
+            {"series_key": series["series_key"]}
+        ]
+    })
+
+    buttons = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "🗑 YES, DELETE EVERYTHING",
+                callback_data=f"confirm_delete:{series['_id']}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "❌ CANCEL",
+                callback_data="cancel_delete"
+            )
+        ]
+    ])
+
+    await message.reply_text(
+        "⚠️ **DELETE SERIES CONFIRMATION**\n\n"
+        f"📺 Series: `{series['title']}`\n"
+        f"🎬 Episodes: `{episode_count}`\n\n"
+        "Are you sure you want to delete this series "
+        "and all its database records?\n\n"
+        "⚠️ This action cannot be undone!",
+        reply_markup=buttons
+    )
+
+
+@app.on_callback_query(
+    filters.regex(r"^confirm_delete:")
+)
+async def confirm_delete_series(client, query):
+
+    if query.from_user.id not in ADMIN_IDS:
+        await query.answer(
+            "❌ Admin only!",
+            show_alert=True
+        )
+        return
+
+    try:
+        series_id = ObjectId(
+            query.data.split(":", 1)[1]
+        )
+    except Exception:
+        await query.answer(
+            "Invalid series ID!",
+            show_alert=True
+        )
+        return
+
+    series = await series_col.find_one({
+        "_id": series_id
+    })
+
+    if not series:
+        await query.answer(
+            "Series already deleted or not found!",
+            show_alert=True
+        )
+        await query.message.edit_text(
+            "❌ Series not found."
+        )
+        return
+
+    series_key = series["series_key"]
+
+    episode_filter = {
+        "$or": [
+            {"series_id": series_id},
+            {"series_key": series_key}
+        ]
+    }
+
+    deleted_episodes = await episodes_col.delete_many(
+        episode_filter
+    )
+
+    await get_files_col.delete_many({
+        "series_id": series_id
+    })
+
+    await states_col.delete_many({
+        "series_id": series_id
+    })
+
+    await poster_sessions_col.delete_many({
+        "series_id": series_id
+    })
+
+    await batch_sessions_col.delete_many({
+        "series_id": series_id
+    })
+
+    await series_col.delete_one({
+        "_id": series_id
+    })
+
+    await query.message.edit_text(
+        "✅ **SERIES DELETED SUCCESSFULLY!**\n\n"
+        f"📺 Series: `{series['title']}`\n"
+        f"🎬 Episodes Deleted: `{deleted_episodes.deleted_count}`\n\n"
+        "🗑 Series database entry deleted.\n"
+        "🗑 Related Get Files tokens deleted.\n\n"
+        "⚠️ Original Telegram channel files are not deleted."
+    )
+
+    await query.answer("Series deleted successfully!")
+
+
+@app.on_callback_query(
+    filters.regex(r"^cancel_delete$")
+)
+async def cancel_delete_series(client, query):
+
+    if query.from_user.id not in ADMIN_IDS:
+        await query.answer(
+            "❌ Admin only!",
+            show_alert=True
+        )
+        return
+
+    await query.message.edit_text(
+        "❌ **DELETE CANCELLED**\n\n"
+        "No database records were deleted."
+    )
+
+    await query.answer("Cancelled!")
+
+
+
 
 # ================= RENDER WEB SERVER =================
 
