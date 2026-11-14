@@ -1329,7 +1329,8 @@ async def select_quality(client, query):
 @app.on_message(
     filters.private
     & filters.user(ADMIN_IDS)
-    & filters.command("delete")
+    & filters.command("delete"),
+    group=-1
 )
 async def delete_series_command(client, message):
 
